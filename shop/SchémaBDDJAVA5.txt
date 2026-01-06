@@ -1,0 +1,70 @@
+Schéma BDD – Base unique PostgreSQL
+-----------------------------------
+
+Tables :
+
+1. Category
+2. Product
+3. Orders
+4. OrderLine
+
+
+-------------------------------------------------------------
+Table : Category
+-------------------------------------------------------------
+Champ            Type                Contraintes
+-------------------------------------------------------------
+id               BIGSERIAL           PRIMARY KEY
+name             VARCHAR             NOT NULL
+description      VARCHAR             NULL
+
+
+-------------------------------------------------------------
+Table : Product
+-------------------------------------------------------------
+Champ            Type                Contraintes
+-------------------------------------------------------------
+id               BIGSERIAL           PRIMARY KEY
+name             VARCHAR             NOT NULL
+description      VARCHAR             NULL
+price            NUMERIC(10,2)       NOT NULL
+quantity_stock   INT                 NOT NULL
+id_category      BIGINT              FOREIGN KEY -> Category(id)
+
+
+Relation :
+Category (1) - (N) Product
+- Une catégorie contient plusieurs produits
+- Un produit appartient à une seule catégorie
+
+
+-------------------------------------------------------------
+Table : Orders
+-------------------------------------------------------------
+Champ            Type                Contraintes
+-------------------------------------------------------------
+id               BIGSERIAL           PRIMARY KEY
+date             TIMESTAMP           NOT NULL
+statut           VARCHAR             NOT NULL
+total_amount     NUMERIC(10,2)       NOT NULL
+
+
+-------------------------------------------------------------
+Table : OrderLine
+-------------------------------------------------------------
+Champ            Type                Contraintes
+-------------------------------------------------------------
+id               BIGSERIAL           PRIMARY KEY
+id_order         BIGINT              FOREIGN KEY -> Orders(id)
+id_product       BIGINT              FOREIGN KEY -> Product(id)
+quantity         INT                 NOT NULL
+unit_price       NUMERIC(10,2)       NOT NULL
+
+
+Relations :
+Orders (1) - (N) OrderLine
+Product (1) - (N) OrderLine
+
+Note :
+- Contrairement au schéma initial, id_product est maintenant une vraie clé étrangère,
+  car les 4 tables sont dans la même base PostgreSQL.
