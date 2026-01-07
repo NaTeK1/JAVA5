@@ -1,0 +1,400 @@
+ Plan de Bataille pour l'Examen (4h)
+
+  Phase 1 : Préparation (10 min)
+
+  1. Lire l'énoncé complètement et identifier :
+    - Nombre de services (généralement 2)
+    - Entités de chaque service
+    - Relations JPA
+    - Communication REST nécessaire
+  2. Créer les projets avec Spring Initializr :
+    - Service 1 : port 8081
+    - Service 2 : port 8082
+    - Dépendances : Web, JPA, Validation, PostgreSQL, Lombok
+
+  ---
+  Phase 2 : Entités + Repositories (45 min)
+
+  Pour chaque service :
+
+  Étape 1 : Créer les entités (20 min par service)
+  src/main/java/com/example/[service]/entity/
+
+  Checklist entité :
+  - @Entity + @Table(name = "...")
+  - @Data, @NoArgsConstructor, @AllArgsConstructor (Lombok)
+  - @Id + @GeneratedValue(strategy = GenerationType.IDENTITY)
+  - Annotations de validation : @NotBlank, @NotNull, @Size, @Min,
+  @Email, etc.
+  - Relations JPA : @ManyToOne, @OneToMany, @JoinColumn
+  - @Column pour contraintes (nullable, length, unique)
+
+  Étape 2 : Créer les repositories (5 min par service)
+  package com.example.service.repository;
+
+  import org.springframework.data.jpa.repository.JpaRepository;
+  import org.springframework.stereotype.Repository;
+
+  @Repository
+  public interface CategorieRepository extends JpaRepository<Categorie,
+  Long> {
+      // Méthodes de recherche personnalisées si nécessaire
+      // List<Categorie> findByNomContaining(String nom);
+  }
+
+  ---
+  Phase 3 : Configuration (10 min)
+
+  Fichier application.properties pour chaque service :
+
+  # Port
+  server.port=8081
+
+  # PostgreSQL
+  spring.datasource.url=jdbc:postgresql://localhost:5432/eventdb
+  spring.datasource.username=postgres
+  spring.datasource.password=votre_mot_de_passe
+
+  # JPA
+  spring.jpa.hibernate.ddl-auto=update
+  spring.jpa.show-sql=true
+  spring.jpa.properties.hibernate.format_sql=true
+
+  # Nom application
+  spring.application.name=event-service
+
+  ---
+  Phase 4 : DTOs (30 min)
+
+  Créer les DTOs pour chaque entité :
+  src/main/java/com/example/[service]/dto/
+
+  Exemple :
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public class EvenementDTO {
+      private Long id;
+
+      @NotBlank(message = "Le titre est obligatoire")
+      private String titre;
+
+      private String description;
+
+      @NotNull
+      @Future(message = "La date doit être dans le futur")
+      private LocalDateTime date;
+
+      @NotBlank
+      private String lieu;
+
+      @Min(value = 1)
+      private Integer placesMax;
+
+      private Integer placesDisponibles;
+
+      @NotNull
+      private Long categorieId;
+
+      private String categorieNom; // Pour l'affichage
+  }
+
+  Astuce : Créer des méthodes de conversion dans l'entité :
+  public EvenementDTO toDTO() {
+      // conversion entité -> DTO
+  }
+
+  public static Evenement fromDTO(EvenementDTO dto, Categorie categorie)
+   {
+      // conversion DTO -> entité
+  }
+
+  ---
+  Phase 5 : Services + DAOs (45 min)
+
+  Structure :
+  src/main/java/com/example/[service]/dao/
+  src/main/java/com/example/[service]/service/
+
+  DAO (Data Access Object) :
+  @Component
+  public class EvenementDAO {
+
+      @Autowired
+      private EvenementRepository repository;
+
+      public List<Evenement> findAll() {
+          return repository.findAll();
+      }
+
+      public Optional<Evenement> findById(Long id) {
+          return repository.findById(id);
+      }
+
+      public Evenement save(Evenement evenement) {
+          return repository.save(evenement);
+      }
+
+      public void deleteById(Long id) {
+          repository.deleteById(id);
+      }
+  }
+
+  Service (Logique métier) :
+  @Service
+  public class EvenementService {
+
+      @Autowired
+      private EvenementDAO evenementDAO;
+
+      @Autowired
+      private CategorieDAO categorieDAO;
+
+      public List<EvenementDTO> getAllEvenements() {
+          return evenementDAO.findAll()
+              .stream()
+              .map(Evenement::toDTO)
+              .collect(Collectors.toList());
+      }
+
+      public EvenementDTO getEvenementById(Long id) {
+          Evenement evenement = evenementDAO.findById(id)
+              .orElseThrow(() -> new
+  ResourceNotFoundException("Événement non trouvé"));
+          return evenement.toDTO();
+      }
+
+      public EvenementDTO createEvenement(EvenementDTO dto) {
+          Categorie categorie =
+  categorieDAO.findById(dto.getCategorieId())
+              .orElseThrow(() -> new
+  ResourceNotFoundException("Catégorie non trouvée"));
+
+          Evenement evenement = Evenement.fromDTO(dto, categorie);
+          evenement.setPlacesDisponibles(evenement.getPlacesMax());
+
+          return evenementDAO.save(evenement).toDTO();
+      }
+
+      public EvenementDTO decrementerPlaces(Long id, Integer nbPlaces) {
+          Evenement evenement = evenementDAO.findById(id)
+              .orElseThrow(() -> new
+  ResourceNotFoundException("Événement non trouvé"));
+
+          if (evenement.getPlacesDisponibles() < nbPlaces) {
+              throw new InsufficientPlacesException("Places
+  insuffisantes");
+          }
+
+
+  evenement.setPlacesDisponibles(evenement.getPlacesDisponibles() -
+  nbPlaces);
+          return evenementDAO.save(evenement).toDTO();
+      }
+  }
+
+  ---
+  Phase 6 : Controllers (30 min)
+
+  Structure :
+  src/main/java/com/example/[service]/controller/
+
+  Exemple :
+  @RestController
+  @RequestMapping("/api/evenements")
+  public class EvenementController {
+
+      @Autowired
+      private EvenementService service;
+
+      @GetMapping
+      public ResponseEntity<List<EvenementDTO>> getAll() {
+          return ResponseEntity.ok(service.getAllEvenements());
+      }
+
+      @GetMapping("/{id}")
+      public ResponseEntity<EvenementDTO> getById(@PathVariable Long id)
+   {
+          return ResponseEntity.ok(service.getEvenementById(id));
+      }
+
+      @PostMapping
+      public ResponseEntity<EvenementDTO> create(@Valid @RequestBody
+  EvenementDTO dto) {
+          return ResponseEntity.status(HttpStatus.CREATED)
+              .body(service.createEvenement(dto));
+      }
+
+      @PutMapping("/{id}/decrementer-places")
+      public ResponseEntity<EvenementDTO> decrementerPlaces(
+          @PathVariable Long id,
+          @RequestParam Integer nbPlaces) {
+          return ResponseEntity.ok(service.decrementerPlaces(id,
+  nbPlaces));
+      }
+
+      @DeleteMapping("/{id}")
+      public ResponseEntity<Void> delete(@PathVariable Long id) {
+          service.deleteEvenement(id);
+          return ResponseEntity.noContent().build();
+      }
+  }
+
+  ---
+  Phase 7 : Communication REST (30 min)
+
+  Dans le service qui doit appeler l'autre :
+
+  1. Ajouter WebClient au pom.xml :
+  <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webflux</artifactId>
+  </dependency>
+
+  2. Créer une classe client :
+  @Component
+  public class EvenementClient {
+
+      private final WebClient webClient;
+
+      public EvenementClient() {
+          this.webClient = WebClient.builder()
+              .baseUrl("http://localhost:8081")
+              .build();
+      }
+
+      public EvenementDTO decrementerPlaces(Long evenementId, Integer
+  nbPlaces) {
+          return webClient.put()
+
+  .uri("/api/evenements/{id}/decrementer-places?nbPlaces={nb}",
+                   evenementId, nbPlaces)
+              .retrieve()
+              .bodyToMono(EvenementDTO.class)
+              .block();
+      }
+  }
+
+  3. Utiliser dans le service :
+  @Service
+  public class InscriptionService {
+
+      @Autowired
+      private EvenementClient evenementClient;
+
+      public InscriptionDTO createInscription(InscriptionDTO dto) {
+          // Appeler le service événements pour décrémenter
+          try {
+              evenementClient.decrementerPlaces(dto.getIdEvenement(),
+  dto.getNbPlaces());
+          } catch (Exception e) {
+              throw new ServiceCommunicationException("Impossible de
+  réserver les places");
+          }
+
+          // Créer l'inscription
+          // ...
+      }
+  }
+
+  ---
+  Phase 8 : Gestion des exceptions (15 min)
+
+  Créer les exceptions personnalisées :
+  public class ResourceNotFoundException extends RuntimeException {
+      public ResourceNotFoundException(String message) {
+          super(message);
+      }
+  }
+
+  public class InsufficientPlacesException extends RuntimeException {
+      public InsufficientPlacesException(String message) {
+          super(message);
+      }
+  }
+
+  Handler global :
+  @RestControllerAdvice
+  public class GlobalExceptionHandler {
+
+      @ExceptionHandler(ResourceNotFoundException.class)
+      public ResponseEntity<ErrorResponse>
+  handleNotFound(ResourceNotFoundException ex) {
+          ErrorResponse error = new ErrorResponse(
+              HttpStatus.NOT_FOUND.value(),
+              ex.getMessage(),
+              LocalDateTime.now()
+          );
+          return
+  ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+      }
+
+      @ExceptionHandler(MethodArgumentNotValidException.class)
+      public ResponseEntity<ErrorResponse>
+  handleValidation(MethodArgumentNotValidException ex) {
+          String message = ex.getBindingResult()
+              .getFieldErrors()
+              .stream()
+              .map(FieldError::getDefaultMessage)
+              .collect(Collectors.joining(", "));
+
+          ErrorResponse error = new ErrorResponse(
+              HttpStatus.BAD_REQUEST.value(),
+              message,
+              LocalDateTime.now()
+          );
+          return ResponseEntity.badRequest().body(error);
+      }
+  }
+
+  ---
+  Phase 9 : Tests (30 min si temps restant)
+
+  Priorités :
+  1. Tester les endpoints avec Postman/Insomnia
+  2. Tests unitaires des services les plus critiques
+  3. Test de la communication REST
+
+  Exemple test unitaire :
+  @SpringBootTest
+  class EvenementServiceTest {
+
+      @Autowired
+      private EvenementService service;
+
+      @Test
+      void testCreateEvenement() {
+          EvenementDTO dto = new EvenementDTO();
+          // ... remplir dto
+
+          EvenementDTO result = service.createEvenement(dto);
+
+          assertNotNull(result.getId());
+          assertEquals(dto.getTitre(), result.getTitre());
+      }
+  }
+
+  ---
+  Checklist Finale
+
+  - Les 2 services démarrent sans erreur
+  - Toutes les entités sont créées avec relations JPA
+  - Tous les endpoints CRUD fonctionnent
+  - La communication REST entre services fonctionne
+  - Validation des données active
+  - Gestion des erreurs en place
+  - Base de données PostgreSQL connectée
+  - Tests basiques passent
+
+  ---
+  Conseils Stratégiques
+
+  1. Commencez TOUJOURS par les entités - c'est la base
+  2. Testez fréquemment - démarrez l'application toutes les 20 minutes
+  3. Ne perdez pas de temps sur les tests si vous manquez de temps -
+  priorisez les fonctionnalités
+  4. Communication REST en dernier - assurez-vous que chaque service
+  fonctionne indépendamment d'abord
+  5. Utilisez Lombok massivement pour gagner du temps
+  6. Copiez-collez intelligemment - une fois une entité faite, les
+  autres suivent le même pattern
